@@ -11,6 +11,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Multer storage
 const storage = multer.diskStorage({
     destination: 'uploads/',
     filename: (req, file, cb) => {
@@ -18,18 +19,36 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ storage });
+// ⛔ LIMIT FILE SIZE (IMPORTANT FOR RENDER)
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 20 * 1024 * 1024 // 20 MB max
+    }
+});
 
-app.post('/upload', upload.single('file'), (req, res) => {
-    res.json({
-        type: 'file',
-        fileUrl: `/uploads/${req.file.filename}`,
-        fileType: req.file.mimetype,
-        fileName: req.file.originalname
+// Upload route with error handling
+app.post('/upload', (req, res) => {
+    upload.single('file')(req, res, (err) => {
+        if (err) {
+            return res.status(400).json({
+                error: err.message
+            });
+        }
+
+        res.json({
+            type: 'file',
+            fileUrl: `/uploads/${req.file.filename}`,
+            fileType: req.file.mimetype,
+            fileName: req.file.originalname
+        });
     });
 });
 
+// Socket.io
 io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
+
     socket.on('msgFromFrontend', (msg) => {
         io.emit('msgFromBackend', {
             type: 'text',
@@ -39,6 +58,10 @@ io.on('connection', (socket) => {
 
     socket.on('fileMessage', (data) => {
         io.emit('msgFromBackend', data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
     });
 });
 

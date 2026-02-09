@@ -8,13 +8,20 @@
 
 <h2>Chat Application</h2>
 
+<!-- TEXT -->
 <input type="text" id="msgInput" placeholder="Enter message">
 <button onclick="sendText()">Send Text</button>
 
 <br><br>
 
+<!-- FILE -->
 <input type="file" id="fileInput">
-<button onclick="sendFile()">Send Image / Video / PDF</button>
+<button onclick="sendFile()">Send File</button>
+
+<br><br>
+
+<progress id="progressBar" value="0" max="100" style="display:none;"></progress>
+<p id="status"></p>
 
 <hr>
 
@@ -28,25 +35,60 @@
     function sendText() {
         const msg = msgInput.value;
         if (!msg) return;
+
         socket.emit('msgFromFrontend', msg);
         msgInput.value = '';
     }
 
-    async function sendFile() {
-        const file = document.getElementById('fileInput').files[0];
+    function sendFile() {
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
         if (!file) return;
+
+        // ⛔ CLIENT-SIDE LIMIT
+        if (file.size > 20 * 1024 * 1024) {
+            alert('File too large! Max 20MB allowed.');
+            return;
+        }
 
         const formData = new FormData();
         formData.append('file', file);
 
-        const res = await fetch('/upload', {
-            method: 'POST',
-            body: formData
-        });
+        const xhr = new XMLHttpRequest();
+        const progressBar = document.getElementById('progressBar');
+        const status = document.getElementById('status');
 
-        const data = await res.json();
-        socket.emit('fileMessage', data);
-        document.getElementById('fileInput').value = '';
+        progressBar.style.display = 'block';
+        progressBar.value = 0;
+        status.innerText = 'Uploading...';
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                progressBar.value = (e.loaded / e.total) * 100;
+            }
+        };
+
+        xhr.onload = () => {
+            progressBar.style.display = 'none';
+
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                socket.emit('fileMessage', data);
+                status.innerText = 'Upload complete ✔';
+            } else {
+                status.innerText = 'Upload failed ❌';
+            }
+        };
+
+        xhr.onerror = () => {
+            progressBar.style.display = 'none';
+            status.innerText = 'Network error ❌';
+        };
+
+        xhr.open('POST', '/upload');
+        xhr.send(formData);
+
+        fileInput.value = '';
     }
 
     socket.on('msgFromBackend', (data) => {
@@ -69,13 +111,13 @@
             img.width = 200;
             img.style.display = 'block';
 
-            const download = document.createElement('a');
-            download.href = data.fileUrl;
-            download.download = data.fileName;
-            download.innerText = '⬇ Download Image';
+            const d = document.createElement('a');
+            d.href = data.fileUrl;
+            d.download = data.fileName;
+            d.innerText = '⬇ Download Image';
 
             container.appendChild(img);
-            container.appendChild(download);
+            container.appendChild(d);
         }
 
         // VIDEO
@@ -86,34 +128,34 @@
             video.width = 300;
             video.style.display = 'block';
 
-            const download = document.createElement('a');
-            download.href = data.fileUrl;
-            download.download = data.fileName;
-            download.innerText = '⬇ Download Video';
+            const d = document.createElement('a');
+            d.href = data.fileUrl;
+            d.download = data.fileName;
+            d.innerText = '⬇ Download Video';
 
             container.appendChild(video);
-            container.appendChild(download);
+            container.appendChild(d);
         }
 
-        // PDF ✅
+        // PDF
         else if (data.fileType === 'application/pdf') {
-            const pdfText = document.createElement('p');
-            pdfText.innerText = `📄 ${data.fileName}`;
+            const p = document.createElement('p');
+            p.innerText = `📄 ${data.fileName}`;
 
             const view = document.createElement('a');
             view.href = data.fileUrl;
             view.target = '_blank';
             view.innerText = 'View PDF';
 
-            const download = document.createElement('a');
-            download.href = data.fileUrl;
-            download.download = data.fileName;
-            download.style.marginLeft = '10px';
-            download.innerText = '⬇ Download PDF';
+            const d = document.createElement('a');
+            d.href = data.fileUrl;
+            d.download = data.fileName;
+            d.style.marginLeft = '10px';
+            d.innerText = '⬇ Download PDF';
 
-            container.appendChild(pdfText);
+            container.appendChild(p);
             container.appendChild(view);
-            container.appendChild(download);
+            container.appendChild(d);
         }
 
         msgBox.appendChild(container);
