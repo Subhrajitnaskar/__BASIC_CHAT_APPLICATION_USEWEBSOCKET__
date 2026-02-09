@@ -8,10 +8,11 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Multer storage
+// ================= MULTER SETUP =================
 const storage = multer.diskStorage({
     destination: 'uploads/',
     filename: (req, file, cb) => {
@@ -19,21 +20,18 @@ const storage = multer.diskStorage({
     }
 });
 
-// LIMIT FILE SIZE (IMPORTANT FOR RENDER)
 const upload = multer({
     storage,
     limits: {
-        fileSize: 20 * 1024 * 1024 // 20 MB max
+        fileSize: 20 * 1024 * 1024 // 20MB max
     }
 });
 
-// Upload route with error handling
+// ================= FILE UPLOAD ROUTE =================
 app.post('/upload', (req, res) => {
     upload.single('file')(req, res, (err) => {
         if (err) {
-            return res.status(400).json({
-                error: err.message
-            });
+            return res.status(400).json({ error: err.message });
         }
 
         res.json({
@@ -45,26 +43,46 @@ app.post('/upload', (req, res) => {
     });
 });
 
-// Socket.io
+// ================= SOCKET.IO =================
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('msgFromFrontend', (msg) => {
+    // Save username
+    socket.on('join', (username) => {
+        socket.username = username;
         io.emit('msgFromBackend', {
-            type: 'text',
-            msg
+            type: 'system',
+            msg: `${username} joined the chat`
         });
     });
 
+    // Text message
+    socket.on('msgFromFrontend', (msg) => {
+        io.emit('msgFromBackend', {
+            type: 'text',
+            msg,
+            sender: socket.username
+        });
+    });
+
+    // File message
     socket.on('fileMessage', (data) => {
+        data.sender = socket.username;
         io.emit('msgFromBackend', data);
     });
 
     socket.on('disconnect', () => {
+        if (socket.username) {
+            io.emit('msgFromBackend', {
+                type: 'system',
+                msg: `${socket.username} left the chat`
+            });
+        }
         console.log('User disconnected:', socket.id);
     });
 });
 
+// ================= SERVER =================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

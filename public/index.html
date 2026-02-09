@@ -3,18 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <title>Chat App</title>
+    <style>
+        body { font-family: Arial; }
+        #msgBox div { margin: 10px 0; }
+        img, video { margin-top: 5px; }
+    </style>
 </head>
 <body>
 
 <h2>Chat Application</h2>
 
-<!-- TEXT -->
 <input type="text" id="msgInput" placeholder="Enter message">
 <button onclick="sendText()">Send Text</button>
 
 <br><br>
 
-<!-- FILE -->
 <input type="file" id="fileInput">
 <button onclick="sendFile()">Send File</button>
 
@@ -29,14 +32,20 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+    let username = '';
+    while (!username) {
+        username = prompt("Enter your name:");
+    }
+
     const socket = io(window.location.origin);
+    socket.emit('join', username);
+
     const msgBox = document.getElementById('msgBox');
+    const msgInput = document.getElementById('msgInput');
 
     function sendText() {
-        const msg = msgInput.value;
-        if (!msg) return;
-
-        socket.emit('msgFromFrontend', msg);
+        if (!msgInput.value) return;
+        socket.emit('msgFromFrontend', msgInput.value);
         msgInput.value = '';
     }
 
@@ -45,9 +54,8 @@
         const file = fileInput.files[0];
         if (!file) return;
 
-        //  CLIENT-SIDE LIMIT
         if (file.size > 20 * 1024 * 1024) {
-            alert('File too large! Max 20MB allowed.');
+            alert('Max 20MB allowed');
             return;
         }
 
@@ -70,7 +78,6 @@
 
         xhr.onload = () => {
             progressBar.style.display = 'none';
-
             if (xhr.status === 200) {
                 const data = JSON.parse(xhr.responseText);
                 socket.emit('fileMessage', data);
@@ -87,76 +94,63 @@
 
         xhr.open('POST', '/upload');
         xhr.send(formData);
-
         fileInput.value = '';
     }
 
     socket.on('msgFromBackend', (data) => {
 
-        // TEXT
-        if (data.type === 'text') {
+        // SYSTEM MESSAGE
+        if (data.type === 'system') {
             const p = document.createElement('p');
             p.innerText = data.msg;
+            p.style.color = 'gray';
             msgBox.appendChild(p);
             return;
         }
 
-        const container = document.createElement('div');
-        container.style.margin = '10px 0';
+        // TEXT MESSAGE
+        if (data.type === 'text') {
+            const p = document.createElement('p');
+            p.innerText = `${data.sender}: ${data.msg}`;
+            msgBox.appendChild(p);
+            return;
+        }
 
-        // IMAGE
+        // FILE MESSAGE
+        const container = document.createElement('div');
+
+        const sender = document.createElement('p');
+        sender.innerText = `${data.sender} sent a file:`;
+        sender.style.fontWeight = 'bold';
+        container.appendChild(sender);
+
         if (data.fileType.startsWith('image')) {
             const img = document.createElement('img');
             img.src = data.fileUrl;
             img.width = 200;
-            img.style.display = 'block';
-
-            const d = document.createElement('a');
-            d.href = data.fileUrl;
-            d.download = data.fileName;
-            d.innerText = '⬇ Download Image';
-
             container.appendChild(img);
-            container.appendChild(d);
         }
-
-        // VIDEO
         else if (data.fileType.startsWith('video')) {
             const video = document.createElement('video');
             video.src = data.fileUrl;
             video.controls = true;
             video.width = 300;
-            video.style.display = 'block';
-
-            const d = document.createElement('a');
-            d.href = data.fileUrl;
-            d.download = data.fileName;
-            d.innerText = '⬇ Download Video';
-
             container.appendChild(video);
-            container.appendChild(d);
         }
-
-        // PDF
         else if (data.fileType === 'application/pdf') {
-            const p = document.createElement('p');
-            p.innerText = `${data.fileName}`;
-
-            const view = document.createElement('a');
-            view.href = data.fileUrl;
-            view.target = '_blank';
-            view.innerText = 'View PDF';
-
-            const d = document.createElement('a');
-            d.href = data.fileUrl;
-            d.download = data.fileName;
-            d.style.marginLeft = '10px';
-            d.innerText = '⬇ Download PDF';
-
-            container.appendChild(p);
-            container.appendChild(view);
-            container.appendChild(d);
+            const a = document.createElement('a');
+            a.href = data.fileUrl;
+            a.target = '_blank';
+            a.innerText = 'View PDF';
+            container.appendChild(a);
         }
+
+        const d = document.createElement('a');
+        d.href = data.fileUrl;
+        d.download = data.fileName;
+        d.style.display = 'block';
+        d.innerText = '⬇ Download';
+        container.appendChild(d);
 
         msgBox.appendChild(container);
     });
