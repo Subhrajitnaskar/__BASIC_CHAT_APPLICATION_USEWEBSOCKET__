@@ -19,7 +19,7 @@ const storage = multer.diskStorage({
     }
 });
 
-// ⛔ LIMIT FILE SIZE (IMPORTANT FOR RENDER)
+// LIMIT FILE SIZE (IMPORTANT FOR RENDER)
 const upload = multer({
     storage,
     limits: {

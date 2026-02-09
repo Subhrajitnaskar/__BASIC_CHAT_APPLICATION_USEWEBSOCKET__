@@ -45,7 +45,7 @@
         const file = fileInput.files[0];
         if (!file) return;
 
-        // ⛔ CLIENT-SIDE LIMIT
+        //  CLIENT-SIDE LIMIT
         if (file.size > 20 * 1024 * 1024) {
             alert('File too large! Max 20MB allowed.');
             return;
@@ -140,7 +140,7 @@
         // PDF
         else if (data.fileType === 'application/pdf') {
             const p = document.createElement('p');
-            p.innerText = `📄 ${data.fileName}`;
+            p.innerText = `${data.fileName}`;
 
             const view = document.createElement('a');
             view.href = data.fileUrl;
