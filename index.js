@@ -1,20 +1,25 @@
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const { Server } = require('socket.io');
 const multer = require('multer');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
 
-// ================= MULTER SETUP =================
+const users = {};
+const messages = {}; // store messages with comments
+
+// ===== FILE UPLOAD SETUP =====
 const storage = multer.diskStorage({
-    destination: 'uploads/',
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
     filename: (req, file, cb) => {
         cb(null, Date.now() + '-' + file.originalname);
     }
@@ -22,68 +27,87 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: {
-        fileSize: 20 * 1024 * 1024 // 20MB max
-    }
+    limits: { fileSize: 20 * 1024 * 1024 }
 });
 
-// ================= FILE UPLOAD ROUTE =================
-app.post('/upload', (req, res) => {
-    upload.single('file')(req, res, (err) => {
-        if (err) {
-            return res.status(400).json({ error: err.message });
-        }
-
-        res.json({
-            type: 'file',
-            fileUrl: `/uploads/${req.file.filename}`,
-            fileType: req.file.mimetype,
-            fileName: req.file.originalname
-        });
+// ===== FILE UPLOAD ROUTE =====
+app.post('/upload', upload.single('file'), (req, res) => {
+    res.json({
+        fileUrl: `/uploads/${req.file.filename}`,
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype
     });
 });
 
-// ================= SOCKET.IO =================
+// ===== SOCKET.IO =====
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
 
-    // Save username
     socket.on('join', (username) => {
-        socket.username = username;
+        users[socket.id] = username;
         io.emit('msgFromBackend', {
             type: 'system',
             msg: `${username} joined the chat`
         });
     });
 
-    // Text message
     socket.on('msgFromFrontend', (msg) => {
+        const messageId = uuidv4();
+
+        messages[messageId] = {
+            comments: []
+        };
+
         io.emit('msgFromBackend', {
             type: 'text',
+            sender: users[socket.id],
             msg,
-            sender: socket.username
+            messageId
         });
     });
 
-    // File message
-    socket.on('fileMessage', (data) => {
-        data.sender = socket.username;
-        io.emit('msgFromBackend', data);
+    socket.on('fileMessage', (fileData) => {
+        const messageId = uuidv4();
+
+        messages[messageId] = {
+            comments: []
+        };
+
+        io.emit('msgFromBackend', {
+            type: 'file',
+            sender: users[socket.id],
+            ...fileData,
+            messageId
+        });
+    });
+
+    socket.on('commentMessage', (data) => {
+
+        if (!messages[data.messageId]) return;
+
+        const commentObj = {
+            sender: users[socket.id],
+            comment: data.comment
+        };
+
+        messages[data.messageId].comments.push(commentObj);
+
+        io.emit('newComment', {
+            messageId: data.messageId,
+            ...commentObj
+        });
     });
 
     socket.on('disconnect', () => {
-        if (socket.username) {
-            io.emit('msgFromBackend', {
-                type: 'system',
-                msg: `${socket.username} left the chat`
-            });
-        }
-        console.log('User disconnected:', socket.id);
+        const username = users[socket.id];
+        delete users[socket.id];
+
+        io.emit('msgFromBackend', {
+            type: 'system',
+            msg: `${username} left the chat`
+        });
     });
 });
 
-// ================= SERVER =================
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+server.listen(3000, () => {
+    console.log("Server running on http://localhost:3000");
 });

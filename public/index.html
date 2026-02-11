@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>Chat App</title>
     <style>
         body { font-family: Arial; }
-        #msgBox div { margin: 10px 0; }
-        img, video { margin-top: 5px; }
+        #msgBox div {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .comment {
+            margin-left: 20px;
+            font-size: 14px;
+            color: darkblue;
+        }
     </style>
 </head>
 <body>
@@ -32,128 +39,114 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-    let username = '';
-    while (!username) {
-        username = prompt("Enter your name:");
+
+let username = '';
+while (!username) {
+    username = prompt("Enter your name:");
+}
+
+const socket = io();
+socket.emit('join', username);
+
+const msgBox = document.getElementById('msgBox');
+const msgInput = document.getElementById('msgInput');
+
+function sendText() {
+    if (!msgInput.value) return;
+    socket.emit('msgFromFrontend', msgInput.value);
+    msgInput.value = '';
+}
+
+function sendFile() {
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    const progressBar = document.getElementById('progressBar');
+    const status = document.getElementById('status');
+
+    progressBar.style.display = 'block';
+
+    xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+            progressBar.value = (e.loaded / e.total) * 100;
+        }
+    };
+
+    xhr.onload = () => {
+        progressBar.style.display = 'none';
+        const data = JSON.parse(xhr.responseText);
+        socket.emit('fileMessage', data);
+        status.innerText = 'Upload complete ✔';
+    };
+
+    xhr.open('POST', '/upload');
+    xhr.send(formData);
+}
+
+socket.on('msgFromBackend', (data) => {
+
+    if (data.type === 'system') {
+        const p = document.createElement('p');
+        p.innerText = data.msg;
+        p.style.color = 'gray';
+        msgBox.appendChild(p);
+        return;
     }
 
-    const socket = io(window.location.origin);
-    socket.emit('join', username);
+    const container = document.createElement('div');
+    container.id = data.messageId;
 
-    const msgBox = document.getElementById('msgBox');
-    const msgInput = document.getElementById('msgInput');
-
-    function sendText() {
-        if (!msgInput.value) return;
-        socket.emit('msgFromFrontend', msgInput.value);
-        msgInput.value = '';
+    if (data.type === 'text') {
+        container.innerHTML = `<b>${data.sender}</b>: ${data.msg}`;
     }
 
-    function sendFile() {
-        const fileInput = document.getElementById('fileInput');
-        const file = fileInput.files[0];
-        if (!file) return;
-
-        if (file.size > 20 * 1024 * 1024) {
-            alert('Max 20MB allowed');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const xhr = new XMLHttpRequest();
-        const progressBar = document.getElementById('progressBar');
-        const status = document.getElementById('status');
-
-        progressBar.style.display = 'block';
-        progressBar.value = 0;
-        status.innerText = 'Uploading...';
-
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                progressBar.value = (e.loaded / e.total) * 100;
-            }
-        };
-
-        xhr.onload = () => {
-            progressBar.style.display = 'none';
-            if (xhr.status === 200) {
-                const data = JSON.parse(xhr.responseText);
-                socket.emit('fileMessage', data);
-                status.innerText = 'Upload complete ✔';
-            } else {
-                status.innerText = 'Upload failed ❌';
-            }
-        };
-
-        xhr.onerror = () => {
-            progressBar.style.display = 'none';
-            status.innerText = 'Network error ❌';
-        };
-
-        xhr.open('POST', '/upload');
-        xhr.send(formData);
-        fileInput.value = '';
-    }
-
-    socket.on('msgFromBackend', (data) => {
-
-        // SYSTEM MESSAGE
-        if (data.type === 'system') {
-            const p = document.createElement('p');
-            p.innerText = data.msg;
-            p.style.color = 'gray';
-            msgBox.appendChild(p);
-            return;
-        }
-
-        // TEXT MESSAGE
-        if (data.type === 'text') {
-            const p = document.createElement('p');
-            p.innerText = `${data.sender}: ${data.msg}`;
-            msgBox.appendChild(p);
-            return;
-        }
-
-        // FILE MESSAGE
-        const container = document.createElement('div');
-
-        const sender = document.createElement('p');
-        sender.innerText = `${data.sender} sent a file:`;
-        sender.style.fontWeight = 'bold';
-        container.appendChild(sender);
+    if (data.type === 'file') {
+        container.innerHTML = `<b>${data.sender}</b> sent a file:<br>`;
 
         if (data.fileType.startsWith('image')) {
-            const img = document.createElement('img');
-            img.src = data.fileUrl;
-            img.width = 200;
-            container.appendChild(img);
-        }
-        else if (data.fileType.startsWith('video')) {
-            const video = document.createElement('video');
-            video.src = data.fileUrl;
-            video.controls = true;
-            video.width = 300;
-            container.appendChild(video);
-        }
-        else if (data.fileType === 'application/pdf') {
-            const a = document.createElement('a');
-            a.href = data.fileUrl;
-            a.target = '_blank';
-            a.innerText = 'View PDF';
-            container.appendChild(a);
+            container.innerHTML += `<img src="${data.fileUrl}" width="200"><br>`;
         }
 
-        const d = document.createElement('a');
-        d.href = data.fileUrl;
-        d.download = data.fileName;
-        d.style.display = 'block';
-        d.innerText = '⬇ Download';
-        container.appendChild(d);
+        container.innerHTML += `<a href="${data.fileUrl}" download>⬇ Download</a>`;
+    }
 
-        msgBox.appendChild(container);
+    // COMMENT SECTION
+    container.innerHTML += `
+        <br><input type="text" placeholder="Write comment..." id="c-${data.messageId}">
+        <button onclick="sendComment('${data.messageId}')">Comment</button>
+        <div id="comments-${data.messageId}"></div>
+    `;
+
+    msgBox.appendChild(container);
+});
+
+function sendComment(messageId) {
+    const input = document.getElementById(`c-${messageId}`);
+    if (!input.value) return;
+
+    socket.emit('commentMessage', {
+        messageId,
+        comment: input.value
     });
+
+    input.value = '';
+}
+
+socket.on('newComment', (data) => {
+    const commentDiv = document.getElementById(`comments-${data.messageId}`);
+    if (!commentDiv) return;
+
+    const p = document.createElement('p');
+    p.className = 'comment';
+    p.innerHTML = `<b>${data.sender}</b>: ${data.comment}`;
+
+    commentDiv.appendChild(p);
+});
+
 </script>
 
 </body>
