@@ -1,12 +1,20 @@
 {
-  "engine": {
-    "node": "22.19.0"
+  "name": "chat-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
+    "ejs": "^5.0.2",
     "express": "^5.2.1",
-    "multer": "^2.0.2",
+    "mongoose": "^9.4.1",
+    "multer": "^2.1.1",
     "socket.io": "^4.8.3",
-    "soket.io": "^0.0.1-security",
     "uuid": "^13.0.0"
   }
 }

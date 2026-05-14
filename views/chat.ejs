@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<h2>Welcome <%= username %></h2>
+
+<div class="container">
+
+<div class="users">
+    <h3>Online Users</h3>
+    <ul id="userList"></ul>
+</div>
+
+<div class="chat">
+
+<div id="messages"></div>
+
+<input id="msg" placeholder="Type message">
+<button onclick="send()">Send</button>
+
+<br><br>
+
+<input id="privateUser" placeholder="Send to username">
+<button onclick="sendPrivate()">Private Send</button>
+
+<br><br>
+
+<input type="file" id="file">
+<button onclick="sendFile()">Send File</button>
+
+<br><br>
+<progress id="progressBar" value="0" max="100" style="width:200px;"></progress>
+<span id="progressText"></span>
+
+</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const username = "<%= username %>";
+
+socket.emit('join', username);
+
+// OTP TEMP STORE
+let tempOtpMessage = "";
+
+// SEND MESSAGE
+function send(confirmed=false){
+    const input = document.getElementById('msg');
+    const msg = input.value;
+
+    if(!msg.trim()) return;
+
+    tempOtpMessage = msg;
+
+    socket.emit('sendMessage', { message: msg, confirmed });
+
+    
+}
+
+// PRIVATE SEND
+function sendPrivate(){
+    const input = document.getElementById('msg');
+    const toUser = document.getElementById('privateUser').value;
+    const msg = input.value;
+
+    if(!toUser.trim() || !msg.trim()) return;
+
+    socket.emit('privateMessage', { toUser, message: msg });
+
+    
+}
+
+// OTP CONFIRM
+socket.on('otpConfirm', data => {
+    if(confirm(`OTP detected at ${data.time}. Send?`)){
+
+        socket.emit('sendMessage', {
+            message: tempOtpMessage,
+            confirmed: true
+        });
+
+        document.getElementById('msg').value = "";
+    }
+});
+
+// NORMAL MESSAGE (FIXED)
+socket.on('receiveMessage', data => {
+    addMessage(`${data.sender}: ${data.message}`, "msg");
+
+    
+    if(data.sender === username){
+        document.getElementById('msg').value = "";
+    }
+});
+
+// SYSTEM MESSAGE
+socket.on('systemMessage', msg => {
+    addMessage(msg, "join");
+});
+
+// PRIVATE MESSAGE (FIXED)
+socket.on('privateMessage', data => {
+    const sender = data.sender || "Unknown";
+    const msg = data.message || "";
+
+    addMessage(`${sender}: ${msg}`, "private");
+
+    
+    if(sender === username){
+        document.getElementById('msg').value = "";
+    }
+});
+
+// FILE SEND WITH PROGRESS
+function sendFile(){
+    const fileInput = document.getElementById('file');
+    const file = fileInput.files[0];
+
+    if(!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/upload", true);
+
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+
+    xhr.upload.onprogress = function(e){
+        if(e.lengthComputable){
+            const percent = Math.round((e.loaded / e.total) * 100);
+            progressBar.value = percent;
+            progressText.innerText = percent + "% uploading...";
+        }
+    };
+
+    xhr.onload = function(){
+        const data = JSON.parse(xhr.responseText);
+
+        socket.emit('fileMessage', { file: data.file });
+
+        progressBar.value = 0;
+        progressText.innerText = "Upload complete ✅";
+
+        fileInput.value = "";
+
+        setTimeout(()=>{
+            progressText.innerText = "";
+        },2000);
+    };
+
+    xhr.send(formData);
+}
+
+// FILE PREVIEW + DOWNLOAD
+socket.on('fileMessage', data => {
+
+    const file = data.file;
+    const ext = file.split('.').pop().toLowerCase();
+
+    let content = "";
+
+    if(["jpg","jpeg","png","gif"].includes(ext)){
+        content = `
+            <b>${data.sender}</b>:<br>
+            <img src="/uploads/${file}" width="150"><br>
+            <button onclick="downloadFile('${file}')">Download</button>
+        `;
+    }
+    else if(["mp4","webm","ogg"].includes(ext)){
+        content = `
+            <b>${data.sender}</b>:<br>
+            <video width="200" controls>
+                <source src="/uploads/${file}">
+            </video><br>
+            <button onclick="downloadFile('${file}')">Download</button>
+        `;
+    }
+    else{
+        content = `
+            <b>${data.sender}</b>: 📄 ${file}<br>
+            <button onclick="downloadFile('${file}')">Download</button>
+        `;
+    }
+
+    addMessage(content, "file");
+});
+
+// DOWNLOAD
+function downloadFile(file){
+    const a = document.createElement('a');
+    a.href = '/uploads/' + file;
+    a.download = file;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// USER LIST
+socket.on('userList', users => {
+    const ul = document.getElementById('userList');
+    ul.innerHTML = "";
+    users.forEach(u => ul.innerHTML += `<li>${u}</li>`);
+});
+
+// UI
+function addMessage(text, type){
+    const div = document.getElementById('messages');
+    const p = document.createElement("p");
+    p.className = type;
+    p.innerHTML = text;
+    div.appendChild(p);
+    div.scrollTop = div.scrollHeight;
+}
+</script>
+
+</body>
+</html>

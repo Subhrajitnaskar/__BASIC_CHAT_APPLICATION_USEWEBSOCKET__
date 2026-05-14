@@ -1,0 +1,63 @@
+body {
+    font-family: Arial;
+    background: #1e1e2f;
+    color: white;
+}
+
+.center {
+    text-align: center;
+    margin-top: 100px;
+}
+
+.container {
+    display: flex;
+}
+
+.users {
+    width: 25%;
+    background: #2c2c3e;
+    padding: 10px;
+}
+
+.chat {
+    width: 75%;
+    padding: 10px;
+}
+
+#messages {
+    height: 300px;
+    overflow-y: scroll;
+    background: #121212;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+.msg {
+    color: #00ffcc;
+}
+
+.private {
+    color: #ffcc00;
+    font-weight: bold;
+}
+
+.file {
+    color: #66ff66;
+}
+
+.join {
+    color: #00ff00;
+    font-style: italic;
+}
+
+button {
+    background: #6c5ce7;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+input {
+    padding: 6px;
+}
